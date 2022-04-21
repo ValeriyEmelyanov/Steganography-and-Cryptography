@@ -1,8 +1,15 @@
 package cryptography
 
+import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+
+const val LEAST_BLUE_BIT_ON = 1
+const val STOP_BYTES_LENGTH = 3
+const val STOP_BYTE_1 = 0
+const val STOP_BYTE_2 = 0
+const val STOP_BYTE_3 = 3
 
 fun main() {
     while (true) {
@@ -11,7 +18,7 @@ fun main() {
         when (task) {
             "exit" -> break
             "hide" -> hideMessage()
-            "show" -> println("Obtaining message from image.")
+            "show" -> showMessage()
             else -> println("Wrong task: $task")
         }
     }
@@ -19,9 +26,7 @@ fun main() {
     println("Bye!")
 }
 
-const val LEAST_ONE_BITS = 65793
-
-fun hideMessage() {
+private fun hideMessage() {
     println("Input image file:")
     val inputFileName = readLine()!!
     println("Output image file:")
@@ -36,23 +41,142 @@ fun hideMessage() {
         return
     }
 
-    println("Input Image: $inputFileName")
-    println("Output Image: $outputFileName")
+    println("Message to hide:")
+    val message = readLine()!!
 
-    for (x in 0 until image.width) {
-        for (y in 0 until image.height) {
-            val rgb = image.getRGB(x, y)
-            image.setRGB(x, y, rgb or LEAST_ONE_BITS)
-        }
+    val bytes = stringToByteArrayWithStopBytes(message)
+    val bits = byteArrayToBitArray(bytes)
+
+    val messageLimit = image.width * image.height
+    if (bits.size > messageLimit) {
+        println("The input image is not large enough to hold this message.")
+        return
     }
+
+    val newImage = encodeImage(image, bits)
 
     try {
         val outputFile = File(outputFileName)
-        ImageIO.write(image, "png", outputFile)
+        ImageIO.write(newImage, "png", outputFile)
     } catch (e: Exception) {
         println("Can't write output file!")
         return
     }
 
-    println("Image $outputFileName is saved.")
+    println("Message saved in $outputFileName image.")
+}
+
+private fun byteToBitArray(byte: Byte): IntArray {
+    val bits = IntArray(8)
+    var remainder = byte.toInt()
+    for (i in 7 downTo 0) {
+        bits[i] = remainder % 2
+        remainder /= 2
+    }
+    return bits
+}
+
+private fun byteArrayToBitArray(bytes: ByteArray): IntArray {
+    val bits = IntArray(bytes.size * 8)
+    for (i in 0 until bytes.size) {
+        System.arraycopy(byteToBitArray(bytes[i]), 0, bits, i * 8, 8)
+    }
+    return bits
+}
+
+private fun stringToByteArrayWithStopBytes(message: String): ByteArray {
+    var bytes = message.toByteArray()
+    bytes += byteArrayOf(STOP_BYTE_1.toByte(), STOP_BYTE_2.toByte(), STOP_BYTE_3.toByte())
+    return bytes
+}
+
+private fun encodeImage(image: BufferedImage, bits: IntArray): BufferedImage {
+    val width = image.width
+    val height = image.height
+    val result = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+
+    var x = 0
+    var y = 0
+
+    for (i in 0 until bits.size) {
+        x = i % width
+        y = i / width
+        val color = Color(image.getRGB(x, y))
+        val newRgb = Color(color.red, color.green, color.blue.and(254).or(bits[i])).rgb
+        result.setRGB(x, y, newRgb)
+    }
+
+    x++
+    while (x < width) {
+        result.setRGB(x, y, image.getRGB(x, y))
+        x++
+    }
+
+    for (y1 in y + 1 until height) {
+        for (x1 in 0 until width) {
+            result.setRGB(x1, y1, image.getRGB(x1, y1))
+        }
+    }
+
+    return result
+}
+
+private fun showMessage() {
+    println("Input image file:")
+    val fileName = readLine()!!
+
+    val image: BufferedImage
+    try {
+        val inputFile = File(fileName)
+        image = ImageIO.read(inputFile)
+    } catch (e: Exception) {
+        println("Can't read file!")
+        return
+    }
+
+    val message = decodeImage(image)
+
+    println("Message:")
+    println(message)
+}
+
+fun decodeImage(image: BufferedImage): String {
+
+    val bits = IntArray(8)
+    var bitCounter = 0
+
+    val bytesList = mutableListOf<Int>()
+
+    for (y in 0 until image.height) {
+        for (x in 0 until image.width) {
+            if (bitCounter >= 8) {
+                bitCounter = 0
+                bytesList.add(bitsToByte(bits))
+            }
+            if (bytesList.size >= STOP_BYTES_LENGTH && isStopBytes(bytesList)) {
+                break
+            }
+            bits[bitCounter] = if (image.getRGB(x, y) and LEAST_BLUE_BIT_ON == LEAST_BLUE_BIT_ON) 1 else 0
+            bitCounter++
+        }
+    }
+
+    for (i in 1..STOP_BYTES_LENGTH) bytesList.removeLast()
+
+    return String(bytesList.map { it.toByte() }.toByteArray())
+}
+
+fun isStopBytes(bytesList: MutableList<Int>): Boolean {
+    val lastIndex = bytesList.lastIndex
+    return bytesList[lastIndex] == STOP_BYTE_3 &&
+            bytesList[lastIndex - 1] == STOP_BYTE_2 &&
+            bytesList[lastIndex - 2] == STOP_BYTE_1
+}
+
+fun bitsToByte(bits: IntArray): Int {
+    var byte = bits[0]
+    for (i in 1..7) {
+        byte = (byte shl 1) or bits[i]
+    }
+    return byte
 }
