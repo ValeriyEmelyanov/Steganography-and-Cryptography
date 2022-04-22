@@ -4,6 +4,7 @@ import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
 import javax.imageio.ImageIO
+import kotlin.experimental.xor
 
 const val LEAST_BLUE_BIT_ON = 1
 const val STOP_BYTES_LENGTH = 3
@@ -43,12 +44,12 @@ private fun hideMessage() {
 
     println("Message to hide:")
     val message = readLine()!!
+    println("Password:")
+    val password = readLine()!!
 
-    val bytes = stringToByteArrayWithStopBytes(message)
+    val bytes = stringToEncodedByteArrayWithStopBytes(message, password)
     val bits = byteArrayToBitArray(bytes)
-
-    val messageLimit = image.width * image.height
-    if (bits.size > messageLimit) {
+    if (bits.size > image.width * image.height) {
         println("The input image is not large enough to hold this message.")
         return
     }
@@ -84,10 +85,21 @@ private fun byteArrayToBitArray(bytes: ByteArray): IntArray {
     return bits
 }
 
-private fun stringToByteArrayWithStopBytes(message: String): ByteArray {
+private fun stringToEncodedByteArrayWithStopBytes(message: String, password: String): ByteArray {
     var bytes = message.toByteArray()
+    encodeByteArray(bytes, password.toByteArray())
     bytes += byteArrayOf(STOP_BYTE_1.toByte(), STOP_BYTE_2.toByte(), STOP_BYTE_3.toByte())
     return bytes
+}
+
+private fun encodeByteArray(bytes: ByteArray, passwordBytes: ByteArray) {
+    val passLen = passwordBytes.size
+    var passInd = 0
+    for (i in 0..bytes.lastIndex) {
+        if (passInd >= passLen) passInd = 0
+        bytes[i] = bytes[i].xor(passwordBytes[passInd])
+        passInd++
+    }
 }
 
 private fun encodeImage(image: BufferedImage, bits: IntArray): BufferedImage {
@@ -134,17 +146,18 @@ private fun showMessage() {
         return
     }
 
-    val message = decodeImage(image)
+    println("Password:")
+    val password = readLine()!!
+
+    val message = decodeImage(image, password)
 
     println("Message:")
     println(message)
 }
 
-fun decodeImage(image: BufferedImage): String {
-
+fun decodeImage(image: BufferedImage, password: String): String {
     val bits = IntArray(8)
     var bitCounter = 0
-
     val bytesList = mutableListOf<Int>()
 
     for (y in 0 until image.height) {
@@ -163,7 +176,10 @@ fun decodeImage(image: BufferedImage): String {
 
     for (i in 1..STOP_BYTES_LENGTH) bytesList.removeLast()
 
-    return String(bytesList.map { it.toByte() }.toByteArray())
+    val bytes = bytesList.map { it.toByte() }.toByteArray()
+    encodeByteArray(bytes, password.toByteArray())
+
+    return String(bytes)
 }
 
 fun isStopBytes(bytesList: MutableList<Int>): Boolean {
