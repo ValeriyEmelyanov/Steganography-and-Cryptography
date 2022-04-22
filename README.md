@@ -1,7 +1,7 @@
 # Steganography and Cryptography
 
 Using encryption to send secret messages,
-hideing message in an image. 
+hiding message in an image. 
 Kotlin training project from JetBrains Academy.
 
 ### In project
